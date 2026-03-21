@@ -195,7 +195,6 @@ function SwarmCard({
               </div>
             )}
           </div>
-
           {!isResolved ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
               <div style={{ fontSize: 13, color: "var(--muted)" }}>${contractor.estimateMin}–${contractor.estimateMax}</div>
@@ -224,7 +223,6 @@ function SwarmCard({
             </div>
           )}
         </div>
-
         {isResolved && (
           <div style={{ marginTop: 14 }}>
             <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic", background: "var(--surface-2)", borderRadius: 9, padding: "10px 14px", marginBottom: 12, lineHeight: 1.6, border: "1px solid var(--border)" }}>
@@ -258,8 +256,9 @@ export default function BidBot() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [owner, setOwner] = useState<OwnerInfo>({ name: "", phone: "", address: "", zip: "", unit: "" });
-
   const [budget, setBudget] = useState("");
+  const [enableCalls] = useState(false); // calls disabled until Twilio upgrade
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
   const [diyGuide, setDiyGuide] = useState<DIYGuide | null>(null);
@@ -268,11 +267,8 @@ export default function BidBot() {
   const [quotes, setQuotes] = useState<NegotiatedQuote[]>([]);
   const [booking, setBooking] = useState<Booking | null>(null);
   const [error, setError] = useState("");
-
-  // Call status per conversation ID
   const [conversationStatuses, setConversationStatuses] = useState<Record<string, string>>({});
   const [negotiatedPrices, setNegotiatedPrices] = useState<Record<string, string>>({});
-
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [loadingDiagnosis, setLoadingDiagnosis] = useState(false);
   const [loadingDIY, setLoadingDIY] = useState(false);
@@ -280,9 +276,6 @@ export default function BidBot() {
   const [loadingNegotiate, setLoadingNegotiate] = useState(false);
   const [loadingBooking, setLoadingBooking] = useState(false);
   const [negotiatingContractors, setNegotiatingContractors] = useState<Contractor[]>([]);
-
-  const [enableCalls, setEnableCalls] = useState(false);
-  const [questions, setQuestions] = useState<Question[]>([]);
 
   const showQuestions = questions.length > 0;
   const showDiagnosis = !!diagnosis;
@@ -306,21 +299,19 @@ export default function BidBot() {
   }[diagnosis.urgency] : null;
 
   const difficultyConfig = diyGuide ? {
-    Easy:   { color: "var(--ok)",   bg: "var(--ok-bg)" },
-    Medium: { color: "var(--warn)", bg: "var(--warn-bg)" },
+    Easy:   { color: "var(--ok)",     bg: "var(--ok-bg)" },
+    Medium: { color: "var(--warn)",   bg: "var(--warn-bg)" },
     Hard:   { color: "var(--danger)", bg: "var(--danger-bg)" },
   }[diyGuide.difficulty] : null;
 
-  // ── Log to Sheets helper (fire and forget) ────────────────────────────────
   function logToSheets(type: string, data: object) {
     fetch("/api/sheets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type, data }),
-    }).catch(() => {}); // non-fatal
+    }).catch(() => {});
   }
 
-  // ── Poll conversation status for real calls ───────────────────────────────
   function pollConversation(conversationId: string, contractorId: string) {
     if (!conversationId) return;
     const interval = setInterval(async () => {
@@ -331,11 +322,9 @@ export default function BidBot() {
         if (data.negotiatedPrice) {
           setNegotiatedPrices(prev => ({ ...prev, [contractorId]: data.negotiatedPrice }));
         }
-        if (data.status === "done" || data.status === "error") {
-          clearInterval(interval);
-        }
+        if (data.status === "done" || data.status === "error") clearInterval(interval);
       } catch { clearInterval(interval); }
-    }, 6000); // poll every 6 seconds
+    }, 6000);
   }
 
   async function handleSubmitIssue() {
@@ -344,14 +333,12 @@ export default function BidBot() {
     setDiagnosis(null); setDiyGuide(null); setContractors([]);
     setSelected(new Set()); setQuotes([]); setBooking(null);
     setAnswers({}); setNegotiatingContractors([]);
-    // Log submission to Sheets
     logToSheets("submission", {
       ownerName: owner.name, ownerPhone: owner.phone,
       address: owner.address, zip: owner.zip, unit: owner.unit ?? "",
       tenantName: "", tenantPhone: "",
       issue, budget: parseInt(budget) || 0,
     });
-
     try {
       const res = await fetch("/api/questions", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -374,8 +361,6 @@ export default function BidBot() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setDiagnosis(data);
-
-      // Log diagnosis to Sheets
       logToSheets("diagnosis", {
         ownerName: owner.name, zip: owner.zip, issue,
         diagnosedIssue: data.issue, tradeType: data.tradeType,
@@ -413,8 +398,6 @@ export default function BidBot() {
       if (!res.ok) throw new Error(data.error);
       const list = Array.isArray(data.contractors) ? data.contractors : [];
       setContractors(list);
-
-      // Log contractors to Sheets
       logToSheets("contractors", {
         zip: owner.zip, tradeType: diagnosis.tradeType,
         contractors: list.map((c: Contractor) => ({
@@ -444,13 +427,9 @@ export default function BidBot() {
       if (!res.ok) throw new Error(data.error);
       const resultQuotes = Array.isArray(data.quotes) ? data.quotes : [];
       setQuotes(resultQuotes);
-
-      // Start polling for real call statuses
       if (enableCalls) {
         resultQuotes.forEach((q: NegotiatedQuote & { conversationId?: string }) => {
-          if (q.conversationId) {
-            pollConversation(q.conversationId, q.contractorId);
-          }
+          if (q.conversationId) pollConversation(q.conversationId, q.contractorId);
         });
       }
     } catch (e: any) { setError(e.message); }
@@ -477,7 +456,6 @@ export default function BidBot() {
     setIssue(""); setBudget("");
     setImageBase64(null); setImagePreview(null);
     setOwner({ name: "", phone: "", address: "", zip: "", unit: "" });
-
     setQuestions([]); setAnswers({}); setDiagnosis(null);
     setDiyGuide(null); setContractors([]); setSelected(new Set());
     setNegotiatingContractors([]); setQuotes([]); setBooking(null); setError("");
@@ -495,15 +473,7 @@ export default function BidBot() {
             <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: -0.5 }}>BidBot</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button onClick={() => setEnableCalls(p => !p)} style={{
-              background: enableCalls ? "var(--ok-bg)" : "transparent",
-              border: `1.5px solid ${enableCalls ? "var(--ok)" : "var(--border)"}`,
-              borderRadius: 99, padding: "4px 12px", fontSize: 11, fontWeight: 600,
-              color: enableCalls ? "var(--ok)" : "var(--muted)", cursor: "pointer",
-            }} className="mono">
-              {enableCalls ? "📞 CALLS ON" : "📞 CALLS OFF"}
-            </button>
-            <div className="mono" style={{ fontSize: 9, color: "var(--muted)", letterSpacing: 2.5 }}>AI REPAIR AGENT</div>
+          <div className="mono" style={{ fontSize: 9, color: "var(--muted)", letterSpacing: 2.5 }}>AI REPAIR AGENT</div>
           </div>
         </div>
       </div>
@@ -512,10 +482,10 @@ export default function BidBot() {
 
         {/* ── Hero ── */}
         <div style={{ marginBottom: 40 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          {/* <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
             <span style={{ background: "var(--accent)", color: "var(--accent-text)", borderRadius: 99, padding: "3px 10px", fontSize: 11, fontWeight: 700 }} className="mono">NEW</span>
             <span style={{ fontSize: 13, color: "var(--muted)" }}>AI negotiation swarm for property repairs</span>
-          </div>
+          </div> */}
           <h1 style={{ fontSize: 38, fontWeight: 900, letterSpacing: -1.5, lineHeight: 1.15, marginBottom: 14 }}>
             Fix it fast.<br />
             <span style={{ color: "var(--accent-dark)" }}>Pay the least.</span>
@@ -541,22 +511,16 @@ export default function BidBot() {
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && ownerValid) { e.preventDefault(); handleSubmitIssue(); } }}
                 placeholder="e.g. Water leaking under the kitchen sink since this morning..." rows={2}
                 style={{ border: "none", boxShadow: "none", borderBottom: "1.5px solid var(--border)", borderRadius: 0, background: "transparent", padding: "6px 88px 12px 0", fontSize: 15, fontWeight: 500 }} />
-              {/* Voice button */}
               <button onClick={voice.listening ? voice.stop : voice.start}
                 style={{ position: "absolute", right: 44, top: 4, background: voice.listening ? "var(--danger)" : "var(--surface-2)", border: `1.5px solid ${voice.listening ? "var(--danger)" : "var(--border)"}`, borderRadius: 9, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: voice.listening ? "white" : "var(--text)" }}>
                 {voice.listening ? "⏹" : "🎙"}
               </button>
-              {/* Image upload button */}
               <button onClick={() => fileInputRef.current?.click()}
                 title="Attach a photo of the issue"
                 style={{ position: "absolute", right: 0, top: 4, background: imageBase64 ? "rgba(200,240,0,0.12)" : "var(--surface-2)", border: `1.5px solid ${imageBase64 ? "var(--accent-dark)" : "var(--border)"}`, borderRadius: 9, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>
                 📷
               </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/heic"
-                style={{ display: "none" }}
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" style={{ display: "none" }}
                 onChange={e => {
                   const file = e.target.files?.[0];
                   if (!file) return;
@@ -564,24 +528,19 @@ export default function BidBot() {
                   const reader = new FileReader();
                   reader.onload = ev => {
                     const result = ev.target?.result as string;
-                    // Strip data URL prefix to get pure base64
-                    const base64 = result.split(",")[1];
-                    setImageBase64(base64);
-                    setImagePreview(result); // keep full data URL for preview
+                    setImageBase64(result.split(",")[1]);
+                    setImagePreview(result);
                   };
                   reader.readAsDataURL(file);
                 }}
               />
             </div>
             {voice.listening && <div className="mono" style={{ fontSize: 9, color: "var(--danger)", letterSpacing: 2, marginTop: 8, fontWeight: 600 }}>● LISTENING...</div>}
-
-            {/* Image preview */}
             {imagePreview && (
               <div style={{ marginTop: 12, position: "relative", display: "inline-block" }}>
                 <img src={imagePreview} alt="Issue photo" style={{ maxHeight: 120, maxWidth: "100%", borderRadius: 10, border: "1.5px solid var(--accent-dark)", display: "block" }} />
-                <button
-                  onClick={() => { setImageBase64(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
-                  style={{ position: "absolute", top: -8, right: -8, background: "var(--danger)", border: "none", borderRadius: "50%", width: 22, height: 22, color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>
+                <button onClick={() => { setImageBase64(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                  style={{ position: "absolute", top: -8, right: -8, background: "var(--danger)", border: "none", borderRadius: "50%", width: 22, height: 22, color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   ×
                 </button>
                 <div className="mono" style={{ fontSize: 9, color: "var(--accent-dark)", letterSpacing: 1.5, marginTop: 5, fontWeight: 600 }}>📷 IMAGE ATTACHED — AI will analyze this</div>
@@ -656,7 +615,7 @@ export default function BidBot() {
               <div style={{ padding: "22px 26px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
                       <div className="mono" style={{ fontSize: 9, color: "var(--muted)", letterSpacing: 2.5, fontWeight: 500 }}>AI DIAGNOSIS</div>
                       <span className="mono" style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: urgencyConfig.color, background: urgencyConfig.border, borderRadius: 99, padding: "3px 8px" }}>{diagnosis.urgency.toUpperCase()}</span>
                       {imageBase64 && (
@@ -846,7 +805,6 @@ export default function BidBot() {
                     : `Negotiating with all ${negotiatingContractors.length} contractors in parallel`}
                 </div>
               </div>
-
               {quotes.length > 0 && totalSaved > 0 && (
                 <div style={{ background: "var(--ok-bg)", border: "1.5px solid var(--ok-border)", borderRadius: 16, padding: "18px 24px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "var(--shadow-sm)" }}>
                   <div>
@@ -859,7 +817,6 @@ export default function BidBot() {
                   </div>
                 </div>
               )}
-
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {negotiatingContractors.map((contractor, i) => {
                   const quote = quotes.find(q => q.contractorId === contractor.id) ?? null;

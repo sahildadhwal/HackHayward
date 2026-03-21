@@ -66,9 +66,8 @@ export interface NegotiatedQuote {
   saved: number;
   availability: string;
   negotiationNote: string;
-  callSid?: string;      // Twilio call SID if a real call was made
-  audioBase64?: string;  // ElevenLabs audio for browser playback
-  script?: string;       // The negotiation script spoken by the bot
+  callSid?: string;
+  script?: string;
 }
 
 export interface OwnerInfo {
@@ -79,17 +78,10 @@ export interface OwnerInfo {
   unit?: string;
 }
 
-export interface TenantInfo {
-  name: string;
-  phone: string;
-}
-
 export interface Booking {
   contractorName: string;
   contractorPhone: string;
   arrivalTime: string;
   estimatedCost: number;
   address: string;
-  tenantName?: string;
-  tenantPhone?: string;
 }

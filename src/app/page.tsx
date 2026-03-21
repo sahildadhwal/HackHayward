@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import type {
   Question, Diagnosis, DIYGuide, Contractor,
-  NegotiatedQuote, OwnerInfo, TenantInfo, Booking,
+  NegotiatedQuote, OwnerInfo, Booking,
 } from "@/lib/types";
 
 // ── Animated counter ──────────────────────────────────────────────────────────
@@ -254,10 +254,8 @@ function SwarmCard({
 export default function BidBot() {
   const [issue, setIssue] = useState("");
   const [owner, setOwner] = useState<OwnerInfo>({ name: "", phone: "", address: "", zip: "", unit: "" });
-  const [tenant, setTenant] = useState<TenantInfo>({ name: "", phone: "" });
+
   const [budget, setBudget] = useState("");
-  const [enableCalls, setEnableCalls] = useState(false);
-  const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
   const [diyGuide, setDiyGuide] = useState<DIYGuide | null>(null);
@@ -344,7 +342,7 @@ export default function BidBot() {
     logToSheets("submission", {
       ownerName: owner.name, ownerPhone: owner.phone,
       address: owner.address, zip: owner.zip, unit: owner.unit ?? "",
-      tenantName: tenant.name, tenantPhone: tenant.phone,
+      tenantName: "", tenantPhone: "",
       issue, budget: parseInt(budget) || 0,
     });
 
@@ -464,8 +462,6 @@ export default function BidBot() {
         arrivalTime: quote.availability,
         estimatedCost: Math.round((quote.negotiatedMin + quote.negotiatedMax) / 2),
         address: `${owner.address}${owner.unit ? `, Unit ${owner.unit}` : ""}, ${owner.zip}`,
-        tenantName: tenant.name || undefined,
-        tenantPhone: tenant.phone || undefined,
       });
       setLoadingBooking(false);
     }, 1800);
@@ -474,7 +470,7 @@ export default function BidBot() {
   function reset() {
     setIssue(""); setBudget("");
     setOwner({ name: "", phone: "", address: "", zip: "", unit: "" });
-    setTenant({ name: "", phone: "" });
+
     setQuestions([]); setAnswers({}); setDiagnosis(null);
     setDiyGuide(null); setContractors([]); setSelected(new Set());
     setNegotiatingContractors([]); setQuotes([]); setBooking(null); setError("");
@@ -562,12 +558,8 @@ export default function BidBot() {
           </div>
           <Divider />
           <div style={{ padding: "20px 26px" }}>
-            <div className="mono" style={{ fontSize: 9, color: "var(--muted)", letterSpacing: 2.5, marginBottom: 14, fontWeight: 500 }}>TENANT & BUDGET <span style={{ opacity: 0.5, fontFamily: "inherit", textTransform: "none", letterSpacing: 0 }}>(optional)</span></div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-              <Field label="TENANT NAME" value={tenant.name} onChange={v => setTenant(p => ({ ...p, name: v }))} placeholder="John Doe" half />
-              <Field label="TENANT PHONE" value={tenant.phone} onChange={v => setTenant(p => ({ ...p, phone: v }))} placeholder="(555) 000-0000" type="tel" half />
-              <Field label="MAX BUDGET $" value={budget} onChange={setBudget} placeholder="e.g. 300" type="number" half />
-            </div>
+            <div className="mono" style={{ fontSize: 9, color: "var(--muted)", letterSpacing: 2.5, marginBottom: 14, fontWeight: 500 }}>BUDGET <span style={{ opacity: 0.5, fontFamily: "inherit", textTransform: "none", letterSpacing: 0 }}>(optional)</span></div>
+            <Field label="MAX BUDGET $" value={budget} onChange={setBudget} placeholder="e.g. 300" type="number" />
           </div>
           <Divider />
           <div style={{ padding: "18px 26px" }}>
@@ -870,19 +862,6 @@ export default function BidBot() {
                   </div>
                 </div>
               </Card>
-              {(booking.tenantName || booking.tenantPhone) && (
-                <Card>
-                  <div style={{ padding: "20px 26px" }}>
-                    <div className="mono" style={{ fontSize: 9, color: "var(--muted)", letterSpacing: 2.5, marginBottom: 14, fontWeight: 500 }}>📱 TENANT SMS SENT</div>
-                    <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 18px", fontSize: 13, lineHeight: 1.8, color: "var(--text-2)" }}>
-                      <span style={{ color: "var(--text)", fontWeight: 600 }}>To: {booking.tenantName} ({booking.tenantPhone})</span><br />
-                      Hi {booking.tenantName}, a repair has been scheduled at your unit.<br />
-                      Contractor: <strong style={{ color: "var(--text)" }}>{booking.contractorName}</strong> · Arrival: <strong style={{ color: "var(--text)" }}>{booking.arrivalTime}</strong><br />
-                      Est. cost: <strong style={{ color: "var(--text)" }}>${booking.estimatedCost}</strong>
-                    </div>
-                  </div>
-                </Card>
-              )}
               <GhostBtn onClick={reset}>← New Issue</GhostBtn>
             </div>
           )}

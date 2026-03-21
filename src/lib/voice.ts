@@ -35,6 +35,12 @@ export async function initiateNegotiationCall(params: {
   budget: number;
 }): Promise<OutboundCallResult> {
   try {
+    console.log("ElevenLabs call payload:", JSON.stringify({
+      agent_id: process.env.ELEVENLABS_AGENT_ID,
+      agent_phone_number_id: process.env.ELEVENLABS_PHONE_NUMBER_ID,
+      to_number: params.toPhone,
+    }, null, 2));
+    
     const res = await fetch(
       "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
       {
@@ -63,6 +69,11 @@ export async function initiateNegotiationCall(params: {
         }),
       }
     );
+
+    const responseText = await res.text();
+    console.log("ElevenLabs response status:", res.status);
+    console.log("ElevenLabs response body:", responseText);
+
 
     if (!res.ok) {
       const err = await res.text();

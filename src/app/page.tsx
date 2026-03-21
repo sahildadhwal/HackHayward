@@ -253,6 +253,10 @@ function SwarmCard({
 // ════════════════════════════════════════════════════════════
 export default function BidBot() {
   const [issue, setIssue] = useState("");
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [imageMime, setImageMime] = useState<string>("image/jpeg");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [owner, setOwner] = useState<OwnerInfo>({ name: "", phone: "", address: "", zip: "", unit: "" });
 
   const [budget, setBudget] = useState("");
@@ -276,6 +280,9 @@ export default function BidBot() {
   const [loadingNegotiate, setLoadingNegotiate] = useState(false);
   const [loadingBooking, setLoadingBooking] = useState(false);
   const [negotiatingContractors, setNegotiatingContractors] = useState<Contractor[]>([]);
+
+  const [enableCalls, setEnableCalls] = useState(false);
+  const [questions, setQuestions] = useState<Question[]>([]);
 
   const showQuestions = questions.length > 0;
   const showDiagnosis = !!diagnosis;
@@ -337,7 +344,6 @@ export default function BidBot() {
     setDiagnosis(null); setDiyGuide(null); setContractors([]);
     setSelected(new Set()); setQuotes([]); setBooking(null);
     setAnswers({}); setNegotiatingContractors([]);
-
     // Log submission to Sheets
     logToSheets("submission", {
       ownerName: owner.name, ownerPhone: owner.phone,
@@ -363,7 +369,7 @@ export default function BidBot() {
     try {
       const res = await fetch("/api/diagnose", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ issue, answers }),
+        body: JSON.stringify({ issue, answers, imageBase64, mimeType: imageMime }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -469,6 +475,7 @@ export default function BidBot() {
 
   function reset() {
     setIssue(""); setBudget("");
+    setImageBase64(null); setImagePreview(null);
     setOwner({ name: "", phone: "", address: "", zip: "", unit: "" });
 
     setQuestions([]); setAnswers({}); setDiagnosis(null);
@@ -533,13 +540,53 @@ export default function BidBot() {
               <textarea value={issue} onChange={e => setIssue(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && ownerValid) { e.preventDefault(); handleSubmitIssue(); } }}
                 placeholder="e.g. Water leaking under the kitchen sink since this morning..." rows={2}
-                style={{ border: "none", boxShadow: "none", borderBottom: "1.5px solid var(--border)", borderRadius: 0, background: "transparent", padding: "6px 48px 12px 0", fontSize: 15, fontWeight: 500 }} />
+                style={{ border: "none", boxShadow: "none", borderBottom: "1.5px solid var(--border)", borderRadius: 0, background: "transparent", padding: "6px 88px 12px 0", fontSize: 15, fontWeight: 500 }} />
+              {/* Voice button */}
               <button onClick={voice.listening ? voice.stop : voice.start}
-                style={{ position: "absolute", right: 0, top: 4, background: voice.listening ? "var(--danger)" : "var(--surface-2)", border: `1.5px solid ${voice.listening ? "var(--danger)" : "var(--border)"}`, borderRadius: 9, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: voice.listening ? "white" : "var(--text)" }}>
+                style={{ position: "absolute", right: 44, top: 4, background: voice.listening ? "var(--danger)" : "var(--surface-2)", border: `1.5px solid ${voice.listening ? "var(--danger)" : "var(--border)"}`, borderRadius: 9, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: voice.listening ? "white" : "var(--text)" }}>
                 {voice.listening ? "⏹" : "🎙"}
               </button>
+              {/* Image upload button */}
+              <button onClick={() => fileInputRef.current?.click()}
+                title="Attach a photo of the issue"
+                style={{ position: "absolute", right: 0, top: 4, background: imageBase64 ? "rgba(200,240,0,0.12)" : "var(--surface-2)", border: `1.5px solid ${imageBase64 ? "var(--accent-dark)" : "var(--border)"}`, borderRadius: 9, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>
+                📷
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic"
+                style={{ display: "none" }}
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setImageMime(file.type || "image/jpeg");
+                  const reader = new FileReader();
+                  reader.onload = ev => {
+                    const result = ev.target?.result as string;
+                    // Strip data URL prefix to get pure base64
+                    const base64 = result.split(",")[1];
+                    setImageBase64(base64);
+                    setImagePreview(result); // keep full data URL for preview
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
             </div>
             {voice.listening && <div className="mono" style={{ fontSize: 9, color: "var(--danger)", letterSpacing: 2, marginTop: 8, fontWeight: 600 }}>● LISTENING...</div>}
+
+            {/* Image preview */}
+            {imagePreview && (
+              <div style={{ marginTop: 12, position: "relative", display: "inline-block" }}>
+                <img src={imagePreview} alt="Issue photo" style={{ maxHeight: 120, maxWidth: "100%", borderRadius: 10, border: "1.5px solid var(--accent-dark)", display: "block" }} />
+                <button
+                  onClick={() => { setImageBase64(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                  style={{ position: "absolute", top: -8, right: -8, background: "var(--danger)", border: "none", borderRadius: "50%", width: 22, height: 22, color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>
+                  ×
+                </button>
+                <div className="mono" style={{ fontSize: 9, color: "var(--accent-dark)", letterSpacing: 1.5, marginTop: 5, fontWeight: 600 }}>📷 IMAGE ATTACHED — AI will analyze this</div>
+              </div>
+            )}
           </div>
           <Divider />
           <div style={{ padding: "20px 26px" }}>
@@ -612,6 +659,9 @@ export default function BidBot() {
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                       <div className="mono" style={{ fontSize: 9, color: "var(--muted)", letterSpacing: 2.5, fontWeight: 500 }}>AI DIAGNOSIS</div>
                       <span className="mono" style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: urgencyConfig.color, background: urgencyConfig.border, borderRadius: 99, padding: "3px 8px" }}>{diagnosis.urgency.toUpperCase()}</span>
+                      {imageBase64 && (
+                        <span className="mono" style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: "var(--accent-dark)", background: "rgba(200,240,0,0.12)", borderRadius: 99, padding: "3px 8px" }}>📷 IMAGE ANALYZED</span>
+                      )}
                     </div>
                     <div style={{ fontWeight: 800, fontSize: 21, marginBottom: 18, textTransform: "capitalize", letterSpacing: -0.5, lineHeight: 1.2 }}>{diagnosis.issue}</div>
                     <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>

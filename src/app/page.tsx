@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import type {
-  Question, Diagnosis, DIYGuide, Contractor,
+  Question, Diagnosis, Contractor,
   NegotiatedQuote, OwnerInfo, Booking,
 } from "@/lib/types";
 
@@ -257,11 +257,10 @@ export default function BidBot() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [owner, setOwner] = useState<OwnerInfo>({ name: "", phone: "", address: "", zip: "", unit: "" });
   const [budget, setBudget] = useState("");
-  const [enableCalls] = useState(false); // calls disabled until Twilio upgrade
+  const [enableCalls] = useState(true);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
-  const [diyGuide, setDiyGuide] = useState<DIYGuide | null>(null);
   const [contractors, setContractors] = useState<Contractor[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [quotes, setQuotes] = useState<NegotiatedQuote[]>([]);
@@ -271,7 +270,6 @@ export default function BidBot() {
   const [negotiatedPrices, setNegotiatedPrices] = useState<Record<string, string>>({});
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [loadingDiagnosis, setLoadingDiagnosis] = useState(false);
-  const [loadingDIY, setLoadingDIY] = useState(false);
   const [loadingShops, setLoadingShops] = useState(false);
   const [loadingNegotiate, setLoadingNegotiate] = useState(false);
   const [loadingBooking, setLoadingBooking] = useState(false);
@@ -279,8 +277,7 @@ export default function BidBot() {
 
   const showQuestions = questions.length > 0;
   const showDiagnosis = !!diagnosis;
-  const showChoice = showDiagnosis && !diyGuide && contractors.length === 0 && !booking && !loadingDIY && !loadingShops;
-  const showDIY = !!diyGuide;
+  const showChoice = showDiagnosis && contractors.length === 0 && !booking && !loadingShops;
   const showContractors = contractors.length > 0 && !booking && negotiatingContractors.length === 0 && quotes.length === 0;
   const showSwarm = negotiatingContractors.length > 0 || (quotes.length > 0 && !booking);
   const showBooked = !!booking;
@@ -298,11 +295,7 @@ export default function BidBot() {
     high:   { color: "var(--danger)", bg: "var(--danger-bg)", border: "var(--danger-border)" },
   }[diagnosis.urgency] : null;
 
-  const difficultyConfig = diyGuide ? {
-    Easy:   { color: "var(--ok)",     bg: "var(--ok-bg)" },
-    Medium: { color: "var(--warn)",   bg: "var(--warn-bg)" },
-    Hard:   { color: "var(--danger)", bg: "var(--danger-bg)" },
-  }[diyGuide.difficulty] : null;
+
 
   function logToSheets(type: string, data: object) {
     fetch("/api/sheets", {
@@ -330,7 +323,7 @@ export default function BidBot() {
   async function handleSubmitIssue() {
     if (!ownerValid) return;
     setError(""); setLoadingQuestions(true); setQuestions([]);
-    setDiagnosis(null); setDiyGuide(null); setContractors([]);
+    // setDiagnosis(null); setDiyGuide(null); setContractors([]);
     setSelected(new Set()); setQuotes([]); setBooking(null);
     setAnswers({}); setNegotiatingContractors([]);
     logToSheets("submission", {
@@ -372,23 +365,9 @@ export default function BidBot() {
     finally { setLoadingDiagnosis(false); }
   }
 
-  async function handleDIY() {
-    setError(""); setLoadingDIY(true);
-    try {
-      const res = await fetch("/api/diy", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ issue, diagnosis }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setDiyGuide(data);
-    } catch (e: any) { setError(e.message); }
-    finally { setLoadingDIY(false); }
-  }
-
   async function handleBookContractor() {
     if (!diagnosis) return;
-    setError(""); setLoadingShops(true); setContractors([]); setDiyGuide(null);
+    setError(""); setLoadingShops(true); setContractors([]);
     try {
       const res = await fetch("/api/shops", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -457,7 +436,7 @@ export default function BidBot() {
     setImageBase64(null); setImagePreview(null);
     setOwner({ name: "", phone: "", address: "", zip: "", unit: "" });
     setQuestions([]); setAnswers({}); setDiagnosis(null);
-    setDiyGuide(null); setContractors([]); setSelected(new Set());
+    setContractors([]); setSelected(new Set());
     setNegotiatingContractors([]); setQuotes([]); setBooking(null); setError("");
     setConversationStatuses({}); setNegotiatedPrices({});
   }
@@ -646,104 +625,27 @@ export default function BidBot() {
           )}
         </Section>
 
-        {/* ══ BLOCK 4: CHOICE ══ */}
+        {/* ══ BLOCK 4: AUTO PROCEED TO SWARM ══ */}
         <Section visible={showChoice}>
           <div style={{ marginBottom: 18 }}>
-            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4, letterSpacing: -0.3 }}>How do you want to handle this?</div>
-            <div style={{ fontSize: 14, color: "var(--muted)" }}>Choose your path forward</div>
+            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4, letterSpacing: -0.3 }}>Ready to find you the best deal</div>
+            <div style={{ fontSize: 14, color: "var(--muted)" }}>BidBot will find local contractors and negotiate simultaneously</div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <button onClick={handleDIY}
-              style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 16, padding: "26px 22px", textAlign: "left", cursor: "pointer", boxShadow: "var(--shadow-sm)" }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--ok)"; e.currentTarget.style.boxShadow = "var(--shadow), 0 0 0 3px var(--ok-border)"; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; }}>
-              <div style={{ width: 52, height: 52, background: "var(--ok-bg)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, marginBottom: 16, border: "1px solid var(--ok-border)" }}>🔧</div>
-              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, letterSpacing: -0.3 }}>Fix It Myself</div>
-              <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.65 }}>Supplies list, difficulty, step-by-step guide, and safety warnings.</div>
-              {diagnosis && !diagnosis.isDIYable && (
-                <div style={{ marginTop: 12, fontSize: 11, color: "var(--warn)", fontWeight: 600, background: "var(--warn-bg)", borderRadius: 6, padding: "4px 9px", display: "inline-block", border: "1px solid var(--warn-border)" }}>⚠ Pro recommended</div>
-              )}
-            </button>
-            <button onClick={handleBookContractor}
-              style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 16, padding: "26px 22px", textAlign: "left", cursor: "pointer", boxShadow: "var(--shadow-sm)" }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent-dark)"; e.currentTarget.style.boxShadow = "var(--shadow), 0 0 0 3px rgba(200,240,0,0.2)"; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; }}>
-              <div style={{ width: 52, height: 52, background: "rgba(200,240,0,0.12)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, marginBottom: 16, border: "1px solid rgba(200,240,0,0.3)" }}>📞</div>
-              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, letterSpacing: -0.3 }}>Deploy Negotiation Swarm</div>
-              <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.65 }}>BidBot calls every contractor simultaneously, negotiates each one, books the winner.</div>
-            </button>
-          </div>
-          {(loadingDIY || loadingShops) && (
+          <button onClick={handleBookContractor}
+            style={{ width: "100%", background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: 16, padding: "26px 22px", textAlign: "left", cursor: "pointer", boxShadow: "var(--shadow-sm)" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent-dark)"; e.currentTarget.style.boxShadow = "var(--shadow), 0 0 0 3px rgba(200,240,0,0.2)"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; }}>
+            <div style={{ width: 52, height: 52, background: "rgba(200,240,0,0.12)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, marginBottom: 16, border: "1px solid rgba(200,240,0,0.3)" }}>📞</div>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, letterSpacing: -0.3 }}>Deploy Negotiation Swarm</div>
+            <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.65 }}>BidBot finds local contractors, negotiates every quote simultaneously, and books the cheapest one.</div>
+          </button>
+          {loadingShops && (
             <div style={{ marginTop: 16 }}>
-              <MiniSpinner text={loadingDIY ? "Generating your DIY guide..." : `Finding nearby ${diagnosis?.tradeType}s...`} />
+              <MiniSpinner text={`Finding nearby ${diagnosis?.tradeType}s...`} />
             </div>
           )}
         </Section>
 
-        {/* ══ BLOCK 5: DIY GUIDE ══ */}
-        <Section visible={showDIY}>
-          {diyGuide && difficultyConfig && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
-                {[
-                  { label: "DIFFICULTY", value: diyGuide.difficulty, color: difficultyConfig.color, bg: difficultyConfig.bg },
-                  { label: "TIME", value: diyGuide.timeEstimate, color: "var(--text)", bg: "var(--surface)" },
-                  { label: "TOTAL COST", value: `$${diyGuide.totalCost}`, color: "var(--ok)", bg: "var(--ok-bg)" },
-                ].map(s => (
-                  <div key={s.label} style={{ background: s.bg, border: "1px solid var(--border)", borderRadius: 14, padding: "18px 16px", textAlign: "center", boxShadow: "var(--shadow-sm)" }}>
-                    <div className="mono" style={{ fontSize: 9, color: "var(--muted)", letterSpacing: 2, marginBottom: 8, fontWeight: 500 }}>{s.label}</div>
-                    <div style={{ fontWeight: 800, fontSize: 17, color: s.color }}>{s.value}</div>
-                  </div>
-                ))}
-              </div>
-              <Card>
-                <div style={{ padding: "18px 24px" }}>
-                  <div className="mono" style={{ fontSize: 9, color: "var(--muted)", letterSpacing: 2.5, marginBottom: 16, fontWeight: 500 }}>SUPPLIES NEEDED</div>
-                  {diyGuide.supplies.map((s, i) => (
-                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: i < diyGuide.supplies.length - 1 ? "1px solid var(--border)" : "none" }}>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{s.item}</div>
-                        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>📍 {s.where}</div>
-                      </div>
-                      <div style={{ fontWeight: 700, fontSize: 15, color: s.estimatedCost === 0 ? "var(--muted)" : "var(--ok)" }}>
-                        {s.estimatedCost === 0 ? "Free" : `$${s.estimatedCost}`}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ padding: "14px 24px", borderTop: "2px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--ok-bg)" }}>
-                  <div style={{ fontWeight: 700 }}>Total supplies</div>
-                  <div style={{ fontWeight: 900, fontSize: 22, color: "var(--ok)" }}>${diyGuide.totalCost}</div>
-                </div>
-              </Card>
-              <Card>
-                <div style={{ padding: "18px 24px" }}>
-                  <div className="mono" style={{ fontSize: 9, color: "var(--muted)", letterSpacing: 2.5, marginBottom: 16, fontWeight: 500 }}>STEP-BY-STEP</div>
-                  {diyGuide.steps.map((step, i) => (
-                    <div key={i} style={{ display: "flex", gap: 16, padding: "12px 0", borderBottom: i < diyGuide.steps.length - 1 ? "1px solid var(--border)" : "none" }}>
-                      <div style={{ minWidth: 28, height: 28, background: "var(--accent)", color: "var(--accent-text)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0, marginTop: 1, boxShadow: "0 2px 6px rgba(200,240,0,0.3)" }}>{i + 1}</div>
-                      <div style={{ fontSize: 14, lineHeight: 1.7, paddingTop: 4, color: "var(--text-2)" }}>{step}</div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-              {diyGuide.safetyWarnings.length > 0 && (
-                <div style={{ background: "var(--warn-bg)", border: "1.5px solid var(--warn-border)", borderRadius: 16, padding: "18px 24px" }}>
-                  <div className="mono" style={{ fontSize: 9, color: "var(--warn)", letterSpacing: 2.5, marginBottom: 12, fontWeight: 600 }}>⚠ SAFETY</div>
-                  {diyGuide.safetyWarnings.map((w, i) => (
-                    <div key={i} style={{ fontSize: 13, color: "var(--warn)", marginBottom: 8, lineHeight: 1.6, display: "flex", gap: 8, fontWeight: 500 }}><span>•</span><span>{w}</span></div>
-                  ))}
-                </div>
-              )}
-              <div style={{ background: "var(--danger-bg)", border: "1.5px solid var(--danger-border)", borderRadius: 16, padding: "18px 24px" }}>
-                <div className="mono" style={{ fontSize: 9, color: "var(--danger)", letterSpacing: 2.5, marginBottom: 10, fontWeight: 600 }}>WHEN TO CALL A PRO</div>
-                <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.7, marginBottom: 16 }}>{diyGuide.whenToCallPro}</div>
-                <GhostBtn onClick={handleBookContractor}>Deploy negotiation swarm instead →</GhostBtn>
-              </div>
-              <GhostBtn onClick={reset}>← Start Over</GhostBtn>
-            </div>
-          )}
-        </Section>
 
         {/* ══ BLOCK 6: CONTRACTOR SELECTION ══ */}
         <Section visible={showContractors}>

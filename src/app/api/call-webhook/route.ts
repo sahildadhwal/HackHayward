@@ -75,8 +75,12 @@ Respond ONLY with valid JSON (no markdown):
       summary,
       transcript: JSON.stringify(transcript),
       finalAgreedPrice,
+      pickedUp: transcript.length > 0,
+      callDurationSecs: 0,
+      attitude: "unknown",
+      wasBooked: false,
     });
-
+    
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error("call-webhook error:", e);

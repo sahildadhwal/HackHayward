@@ -74,7 +74,8 @@ export async function initiateNegotiationCall(params: {
     // console.log("ElevenLabs response status:", res.status);
     // console.log("ElevenLabs response body:", responseText);
 
-
+    
+    
     if (!res.ok) {
       const err = await res.text();
       console.error("ElevenLabs outbound call error:", err);
@@ -83,10 +84,13 @@ export async function initiateNegotiationCall(params: {
 
     const responseText = await res.text();
     const data = JSON.parse(responseText);
+    console.log("ElevenLabs status:", res.status);
+    console.log("ElevenLabs response:", responseText);
     return {
       conversationId: data.conversation_id ?? "",
       callSid: data.call_sid,
     };
+
 
   } catch (e: any) {
     console.error("initiateNegotiationCall error:", e);
